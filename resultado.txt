@@ -1,0 +1,5 @@
+
+=== Metodo da Bissecao ===
+Iter |       xk        |      f(xk)       |     Erro
+-----------------------------------------------------------
+Intervalo invalido: f(a)*f(b) > 0
