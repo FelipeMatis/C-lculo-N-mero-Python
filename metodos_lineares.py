@@ -1,10 +1,8 @@
-# metodos_lineares.py
-# Rotinas para resolução de sistemas lineares com opção de retornar passos detalhados.
-# Assinaturas:
-#   x, tempo, status                  <- comportamento padrão (return_steps=False)
-#   x, tempo, status, steps_dict      <- quando return_steps=True
-#
-# Para métodos iterativos: gauss_jacobi(A,b,x0,tol,max_iter, return_steps=True) retorna também iterados.
+# Rotinas para resolver sistemas lineares.
+# Retornos:
+#   x, tempo, status
+# ou
+#   x, tempo, status, steps  (quando return_steps=True)
 
 import numpy as np
 import time
@@ -12,10 +10,12 @@ import time
 EPS = 1e-18
 
 def is_square(A):
+    # verifica se A é matriz quadrada
     A = np.array(A)
     return A.ndim == 2 and A.shape[0] == A.shape[1]
 
 def is_positive_definite(A):
+    # tenta fazer Cholesky para checar se é definida positiva
     A = np.array(A, dtype=float)
     if not is_square(A):
         return False
@@ -26,9 +26,10 @@ def is_positive_definite(A):
         return False
 
 # -------------------------
-# Helpers para retorno consistente
+# Função auxiliar para retorno consistente
 # -------------------------
 def _wrap_return(x, tempo, status, steps=None, return_steps=False):
+    # se o chamador quis os passos, devolve também o dicionário steps
     if return_steps:
         return x, tempo, status, steps
     else:
@@ -52,7 +53,7 @@ def eliminacao_gauss(A, b, return_steps=False, show_steps_matrix=False, **kwargs
     if show_steps_matrix:
         steps["matrizes"].append(("Inicial (A|b)", M.copy()))
 
-    # Eliminação direta (sem pivoteamento)
+    # fase de eliminação (sem trocar linhas)
     for i in range(n):
         if abs(M[i, i]) < EPS:
             status = f"ERRO: Pivô (linha {i}) muito próximo de zero — pivoteamento necessário."
@@ -64,7 +65,7 @@ def eliminacao_gauss(A, b, return_steps=False, show_steps_matrix=False, **kwargs
                 steps["actions"].append(f"Eliminou linha {j} usando linha {i} (multiplicador={m:.6g})")
                 steps["matrizes"].append((f"Depois eliminação i={i}, j={j}", M.copy()))
 
-    # Retrosubstituição
+    # retrosubstituição
     x = np.zeros(n)
     for i in range(n-1, -1, -1):
         denom = M[i, i]
@@ -78,7 +79,7 @@ def eliminacao_gauss(A, b, return_steps=False, show_steps_matrix=False, **kwargs
     return _wrap_return(x, tempo, status, steps, return_steps)
 
 # -------------------------
-# Pivoteamento parcial (Gauss com troca de linhas)
+# Pivoteamento parcial (troca de linhas)
 # -------------------------
 def pivoteamento_parcial(A, b, return_steps=False, show_steps_matrix=False, **kwargs):
     inicio = time.time()
@@ -141,11 +142,10 @@ def pivoteamento_completo(A, b, return_steps=False, show_steps_matrix=False, sho
 
     n = len(b)
     M = np.hstack([A.copy(), b.reshape(-1,1)])  # matriz aumentada
-    col_perm = list(range(n))  # acompanhar permutação de colunas
+    col_perm = list(range(n))  # acompanha permutação de colunas
     if show_steps_matrix:
         steps["matrizes"].append(("Inicial (A|b)", M.copy()))
 
-    # Eliminação com pivoteamento completo
     for i in range(n):
         sub = np.abs(M[i:, i:n])
         if sub.size == 0:
@@ -181,7 +181,7 @@ def pivoteamento_completo(A, b, return_steps=False, show_steps_matrix=False, sho
             if show_steps_matrix:
                 steps["matrizes"].append((f"Depois eliminação i={i}, j={j}", M.copy()))
 
-    # Retrosubstituição para x permutado
+    # retrosubstituição na matriz aumentada (solução permutada)
     x_perm = np.zeros(n)
     for i in range(n-1, -1, -1):
         if abs(M[i, i]) < EPS:
@@ -189,7 +189,7 @@ def pivoteamento_completo(A, b, return_steps=False, show_steps_matrix=False, sho
             return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
         x_perm[i] = (M[i, n] - np.dot(M[i, i+1:n], x_perm[i+1:n])) / M[i, i]
 
-    # Reordenar a solução conforme permutação de colunas
+    # reordena a solução conforme permutação de colunas
     x = np.zeros(n)
     for i_col_after in range(n):
         orig_col_index = col_perm[i_col_after]
@@ -233,12 +233,12 @@ def fatoracao_lu(A, b, return_steps=False, show_steps_matrix=False, show_LU=Fals
                 steps["matrizes"].append((f"Após k={k}, atualização U", U.copy()))
                 steps["matrizes"].append((f"Após k={k}, L", L.copy()))
 
-    # Resolver Ly = b
+    # resolve Ly = b
     y = np.zeros(n)
     for i in range(n):
         y[i] = b[i] - np.dot(L[i, :i], y[:i])
 
-    # Resolver Ux = y
+    # resolve Ux = y
     x = np.zeros(n)
     for i in range(n-1, -1, -1):
         if abs(U[i, i]) < EPS:
@@ -254,7 +254,7 @@ def fatoracao_lu(A, b, return_steps=False, show_steps_matrix=False, show_LU=Fals
     return _wrap_return(x, tempo, status, steps, return_steps)
 
 # -------------------------
-# Fatoração de Cholesky
+# Cholesky
 # -------------------------
 def cholesky(A, b, return_steps=False, show_steps_matrix=False, show_L=False, **kwargs):
     inicio = time.time()
@@ -272,13 +272,13 @@ def cholesky(A, b, return_steps=False, show_steps_matrix=False, show_L=False, **
         status = "ERRO: Cholesky não aplicável — matriz não é definida positiva."
         return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
 
-    # Resolver Ly = b
+    # resolve Ly = b
     y = np.zeros_like(b, dtype=float)
     n = len(b)
     for i in range(n):
         y[i] = (b[i] - np.dot(L[i, :i], y[:i])) / L[i, i]
 
-    # Resolver L^T x = y
+    # resolve L^T x = y
     x = np.zeros_like(b, dtype=float)
     LT = L.T
     for i in range(n-1, -1, -1):
@@ -291,7 +291,7 @@ def cholesky(A, b, return_steps=False, show_steps_matrix=False, show_L=False, **
     return _wrap_return(x, tempo, status, steps, return_steps)
 
 # -------------------------
-# Método iterativo de Gauss-Jacobi
+# Gauss-Jacobi (iterativo)
 # -------------------------
 def gauss_jacobi(A, b, x0=None, tol=1e-8, max_iter=100, return_steps=False, record_iterations=False, **kwargs):
     inicio = time.time()
@@ -334,7 +334,7 @@ def gauss_jacobi(A, b, x0=None, tol=1e-8, max_iter=100, return_steps=False, reco
     return _wrap_return(x_new, tempo, status, steps, return_steps)
 
 # -------------------------
-# Método iterativo de Gauss-Seidel
+# Gauss-Seidel (iterativo)
 # -------------------------
 def gauss_seidel(A, b, x0=None, tol=1e-8, max_iter=100, return_steps=False, record_iterations=False, **kwargs):
     inicio = time.time()
@@ -377,7 +377,7 @@ def gauss_seidel(A, b, x0=None, tol=1e-8, max_iter=100, return_steps=False, reco
     return _wrap_return(x, tempo, status, steps, return_steps)
 
 # -------------------------
-# Mapeamento de nomes para funções (usado pela GUI)
+# Mapeamento usado pela GUI
 # -------------------------
 METODOS = {
     "Gauss sem pivoteamento": eliminacao_gauss,
