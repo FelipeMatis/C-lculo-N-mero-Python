@@ -4,7 +4,7 @@ O sistema foi construído com o uso da biblioteca Tkinter para a criação da in
 
 Foram implementados dois grandes grupos de métodos:
 
-•Métodos para Sistemas Lineares
+**•Métodos para Sistemas Lineares**
 
 -Eliminação de Gauss (sem pivoteamento)
 
@@ -16,8 +16,8 @@ Foram implementados dois grandes grupos de métodos:
 
 -Métodos Iterativos de Gauss–Jacobi e Gauss–Seidel
 
-•Métodos para Cálculo de Raízes de Funções
-
+**•Métodos para Cálculo de Raízes de Funções
+**
 -Método da Bisseção
 
 -Método do Ponto Fixo
