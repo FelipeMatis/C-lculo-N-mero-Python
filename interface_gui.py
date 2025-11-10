@@ -1,33 +1,41 @@
-# GUI em Tkinter para usar métodos lineares e métodos para encontrar raízes
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import numpy as np
 import os
 import io
+import datetime
 
 from metodos_lineares import METODOS as METODOS_LIN
 import metodos_raizes as MR  # funções: bissecao, newton, secante, etc.
 
 
+def ensure_logs_dir():
+    os.makedirs("logs", exist_ok=True)
+
+
+def timestamp_str():
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
 class App:
     def __init__(self, root):
-        # janela principal e variáveis principais
         self.root = root
         self.root.title("Trabalho - Métodos do Capítulo 3")
-        self.A = None  # matriz do sistema
-        self.b = None  # vetor do sistema
+        self.A = None
+        self.b = None
 
+        ensure_logs_dir()
         self._build_ui()
 
+    # ------------------ UI Setup ------------------
     def _build_ui(self):
-        # frame principal (agora como atributo para facilitar configuração)
         self.frm = ttk.Frame(self.root, padding=8)
         self.frm.grid(row=0, column=0, sticky="nsew")
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
 
-        # === Parte: carregar A e b ===
+        # Load frame
         load_frame = ttk.LabelFrame(self.frm, text="Carregar Sistema (A e b)")
         load_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         load_frame.columnconfigure(0, weight=1)
@@ -36,15 +44,14 @@ class App:
 
         ttk.Button(load_frame, text="Carregar arquivo (A|b)", command=self.load_ab_file).grid(
             row=0, column=0, padx=5, pady=5, sticky="w")
-        ttk.Button(load_frame, text="Carregar A (apenas coeficientes)",
-                   command=self.load_a_file).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ttk.Button(load_frame, text="Carregar A (apenas coeficientes)", command=self.load_a_file).grid(
+            row=0, column=1, padx=5, pady=5, sticky="w")
         ttk.Button(load_frame, text="Carregar b (vetor)", command=self.load_b_file).grid(
             row=0, column=2, padx=5, pady=5, sticky="w")
 
         self.lbl_status = ttk.Label(load_frame, text="Nenhum arquivo carregado.")
         self.lbl_status.grid(row=1, column=0, columnspan=3, sticky="w", padx=5)
 
-        # caixas de texto para colar A e b direto
         ttk.Label(load_frame, text="Colar A (linha por linha):").grid(
             row=2, column=0, sticky="w", padx=2, pady=(8, 0))
         self.text_a = tk.Text(load_frame, height=5, width=50)
@@ -58,25 +65,23 @@ class App:
         ttk.Button(load_frame, text="Carregar do texto", command=self.load_from_text).grid(
             row=4, column=0, padx=5, pady=5, sticky="w")
 
-        # === Parte: métodos lineares ===
+        # Métodos lineares
         method_frame = ttk.LabelFrame(self.frm, text="Métodos Lineares")
         method_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
         method_frame.columnconfigure(0, weight=1)
         method_frame.columnconfigure(1, weight=1)
 
-        # combobox com os métodos disponíveis (vem de METODOS_LIN)
         self.metodo_selecionado = tk.StringVar(value=list(METODOS_LIN.keys())[0])
         metodo_combo = ttk.Combobox(method_frame, textvariable=self.metodo_selecionado,
                                     values=list(METODOS_LIN.keys()), state="readonly")
         metodo_combo.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         metodo_combo.bind("<<ComboboxSelected>>", lambda e: self._on_metodo_change())
 
-        # opções específicas do método
         self.options_frame = ttk.Frame(method_frame)
         self.options_frame.grid(row=1, column=0, sticky="ew", pady=2)
         self._build_linear_options()
 
-        # parâmetros genéricos para métodos iterativos
+        # Parametros iterativos
         iter_frame = ttk.LabelFrame(self.frm, text="Parâmetros (métodos iterativos)")
         iter_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
         iter_frame.columnconfigure(0, weight=0)
@@ -99,7 +104,7 @@ class App:
         self.x0_init = tk.Entry(iter_frame)
         self.x0_init.grid(row=1, column=2, columnspan=2, sticky="ew", padx=2)
 
-        # === Parte: métodos para raízes ===
+        # Métodos de raízes
         roots_frame = ttk.LabelFrame(self.frm, text="Métodos para Raízes")
         roots_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
         roots_frame.columnconfigure(0, weight=0)
@@ -112,8 +117,8 @@ class App:
         root_methods = ["Bisseção", "Ponto Fixo", "Newton-Raphson", "Secante", "Regula Falsi"]
         root_combo = ttk.Combobox(roots_frame, textvariable=self.root_method_var, values=root_methods, state="readonly")
         root_combo.grid(row=0, column=1, sticky="ew", padx=4)
+        root_combo.bind("<<ComboboxSelected>>", lambda e: self._on_metodo_change())
 
-        # entradas numéricas usadas pelos métodos de raízes
         ttk.Label(roots_frame, text="a:").grid(row=1, column=0, sticky="e")
         self.root_a = tk.Entry(roots_frame, width=12)
         self.root_a.grid(row=1, column=1, sticky="w", padx=4)
@@ -137,36 +142,35 @@ class App:
         self.root_maxiter.insert(0, "100")
         self.root_maxiter.grid(row=3, column=3, sticky="w", padx=4)
 
-        # opção para ver passos dos métodos de raízes
         self.var_show_roots_steps = tk.BooleanVar(value=False)
         ttk.Checkbutton(roots_frame, text="Mostrar passos", variable=self.var_show_roots_steps).grid(
             row=4, column=0, columnspan=2, sticky="w", padx=4)
 
-        # botões de carregar entrada opcional e executar método de raízes
         ttk.Button(roots_frame, text="Carregar entrada.txt (opcional)", command=self.load_entrada_file).grid(
             row=5, column=0, padx=4, pady=4, sticky="w")
         ttk.Button(roots_frame, text="Resolver Raiz", command=self.run_roots).grid(
             row=5, column=1, padx=4, pady=4, sticky="w")
 
-        # === Botões principais ===
+        # Botões principais (adiciona limpar saída e logs)
         btn_frame = ttk.Frame(self.frm)
         btn_frame.grid(row=4, column=0, sticky="ew", pady=5)
         btn_frame.columnconfigure(0, weight=1)
         btn_frame.columnconfigure(1, weight=1)
         btn_frame.columnconfigure(2, weight=1)
+        btn_frame.columnconfigure(3, weight=1)
         ttk.Button(btn_frame, text="Resolver Método Linear", command=self.resolver_linear).grid(
             row=0, column=0, padx=5, sticky="w")
-        ttk.Button(btn_frame, text="Limpar", command=self.limpar).grid(
+        ttk.Button(btn_frame, text="Limpar Campos", command=self.limpar).grid(
             row=0, column=1, padx=5, sticky="w")
+        ttk.Button(btn_frame, text="Limpar Saída", command=self.limpar_saida).grid(row=0, column=2, padx=5, sticky="w")
         ttk.Button(btn_frame, text="Salvar Resultado (.txt)", command=self.salvar_resultado).grid(
-            row=0, column=2, padx=5, sticky="w")
+            row=0, column=3, padx=5, sticky="w")
 
-        # === Área de resultados (abas) ===
+        # Área de resultados
         self.result_nb = ttk.Notebook(self.frm)
         self.result_nb.grid(row=5, column=0, sticky="nsew", padx=5, pady=5)
         self.frm.rowconfigure(5, weight=1)
 
-        # aba: resultados resumidos
         result_frame = ttk.Frame(self.result_nb)
         self.result_nb.add(result_frame, text="Resultados")
         result_frame.columnconfigure(0, weight=1)
@@ -180,7 +184,6 @@ class App:
         hsb.grid(row=1, column=0, sticky="ew")
         self.texto_resultado.configure(xscrollcommand=hsb.set)
 
-        # aba: passos detalhados
         steps_frame = ttk.Frame(self.result_nb)
         self.result_nb.add(steps_frame, text="Passos / Saída detalhada")
         steps_frame.columnconfigure(0, weight=1)
@@ -195,13 +198,12 @@ class App:
         self.texto_passos.configure(xscrollcommand=hsb2.set)
 
         self._configure_grid_weights()
+        self._on_metodo_change()  # atualiza campos conforme método selecionado
 
     def _configure_grid_weights(self):
-        # garante que o frame principal expanda
         try:
             self.root.update_idletasks()
             self.frm.columnconfigure(0, weight=1)
-            # assegura que o notebook e sua aba cresçam
             try:
                 self.result_nb.grid_configure(sticky="nsew")
                 self.result_nb.columnconfigure(0, weight=1)
@@ -209,7 +211,6 @@ class App:
             except Exception:
                 pass
 
-            # percorre filhos e define peso mínimo nas colunas/linhas
             def _scan(w):
                 try:
                     w.columnconfigure(0, weight=1)
@@ -224,7 +225,6 @@ class App:
 
             _scan(self.frm)
 
-            # garantir que Text widgets estejam sticky nsew
             for child in self.frm.winfo_children():
                 for sub in child.winfo_children():
                     if isinstance(sub, tk.Text):
@@ -239,11 +239,8 @@ class App:
         except Exception:
             pass
 
-    # -------------------------
-    # Opções específicas para métodos lineares
-    # -------------------------
+    # ----------------- opções lineares -----------------
     def _build_linear_options(self):
-        # limpa o que já tem e cria opções úteis
         for w in self.options_frame.winfo_children():
             w.destroy()
         ttk.Label(self.options_frame, text="Opções específicas do método:").grid(
@@ -260,11 +257,9 @@ class App:
         self.var_show_permutation = tk.BooleanVar(value=False)
         self.cb_perm = ttk.Checkbutton(
             self.options_frame, text="Exibir permutações (pivoteamento)", variable=self.var_show_permutation)
-        # ajusta visibilidade conforme o método selecionado
         self._on_metodo_change()
 
     def _on_metodo_change(self):
-        # mostra/oculta opções extras dependendo do nome do método
         metodo = self.metodo_selecionado.get().lower()
         try:
             self.cb_LU.grid_forget()
@@ -276,11 +271,8 @@ class App:
         if "completo" in metodo or "pivoteamento completo" in metodo:
             self.cb_perm.grid(row=3, column=0, sticky="w", padx=4)
 
-    # -------------------------
-    # Carregamento de arquivos / texto
-    # -------------------------
+    # ----------------- carregamento -----------------
     def parse_text_matrix(self, txt):
-        # transforma texto com números em uma matriz numpy
         lines = [ln.strip() for ln in txt.splitlines() if ln.strip() != ""]
         mat = []
         for ln in lines:
@@ -289,7 +281,6 @@ class App:
         return np.array(mat, dtype=float)
 
     def load_ab_file(self):
-        # abre arquivo onde a última coluna é b (A|b)
         path = filedialog.askopenfilename(title="Selecionar arquivo A|b", filetypes=[
             ("Text files", "*.txt"), ("All files", "*.*")])
         if not path:
@@ -318,7 +309,6 @@ class App:
             messagebox.showerror("Erro", f"Falha ao carregar arquivo: {e}")
 
     def load_a_file(self):
-        # abre arquivo com apenas a matriz A (deve ser quadrada)
         path = filedialog.askopenfilename(title="Selecionar arquivo A", filetypes=[
             ("Text files", "*.txt"), ("All files", "*.*")])
         if not path:
@@ -346,7 +336,6 @@ class App:
             messagebox.showerror("Erro", f"Falha ao carregar arquivo A: {e}")
 
     def load_b_file(self):
-        # abre arquivo para vetor b (pode ser vários números em linha ou coluna)
         path = filedialog.askopenfilename(title="Selecionar arquivo b", filetypes=[
             ("Text files", "*.txt"), ("All files", "*.*")])
         if not path:
@@ -370,7 +359,6 @@ class App:
             messagebox.showerror("Erro", f"Falha ao carregar arquivo b: {e}")
 
     def load_from_text(self):
-        # pega A e/ou b a partir das caixas de texto da interface
         a_txt = self.text_a.get("1.0", tk.END).strip()
         b_txt = self.text_b.get("1.0", tk.END).strip()
         try:
@@ -384,12 +372,10 @@ class App:
                     messagebox.showerror("Erro", "Formato inválido para A no texto.")
                     return
 
-                # se tem coluna a mais e não passou b, trata como A|b
                 if b_txt == "" and A.shape[1] == A.shape[0] + 1:
                     self.A = A[:, :-1]
                     self.b = A[:, -1].reshape(-1)
                 else:
-                    # se só A foi colado, exige quadrada
                     if A.shape[0] != A.shape[1]:
                         messagebox.showerror(
                             "Erro", "Se estiver carregando apenas A pelo texto, A deve ser quadrada (n x n).")
@@ -409,11 +395,7 @@ class App:
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao carregar do texto: {e}")
 
-    # -------------------------
-    # Carregar arquivo de entrada para métodos de raízes (opcional)
-    # -------------------------
     def load_entrada_file(self):
-        # espera arquivo com 7 valores: metodo a b x0 x1 tol maxIter
         path = filedialog.askopenfilename(title="Selecionar entrada.txt", filetypes=[
             ("Text files", "*.txt"), ("All files", "*.*")])
         if not path:
@@ -451,11 +433,7 @@ class App:
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao carregar entrada.txt: {e}")
 
-    # -------------------------
-    # Executa métodos lineares (usa METODOS_LIN)
-    # -------------------------
     def resolver_linear(self):
-        # limpa áreas de saída
         self.texto_resultado.delete('1.0', tk.END)
         self.texto_passos.delete('1.0', tk.END)
 
@@ -472,7 +450,6 @@ class App:
         show_perm = self.var_show_permutation.get() if hasattr(self, "var_show_permutation") else False
 
         try:
-            # se o método for iterativo, pega a tolerância, max iterações e chute inicial
             if "iterativo" in metodo_nome.lower():
                 try:
                     tol = float(self.tol.get())
@@ -499,7 +476,6 @@ class App:
                 sol = metodo_func(self.A, self.b, x0=x0, tol=tol, max_iter=max_iter,
                                   return_steps=show_steps, record_iterations=show_steps)
             else:
-                # método direto
                 sol = metodo_func(self.A, self.b,
                                   return_steps=show_steps,
                                   show_steps_matrix=show_matrices,
@@ -509,7 +485,6 @@ class App:
             messagebox.showerror("Erro", f"Erro ao executar método linear: {e}")
             return
 
-        # interpreta retorno (com ou sem passos)
         if show_steps:
             try:
                 x, tempo, status, steps = sol
@@ -524,7 +499,6 @@ class App:
                 messagebox.showerror("Erro", "Formato retornado inesperado.")
                 return
 
-        # exibe resultados resumidos
         self.texto_resultado.insert(tk.END, f"=== MÉTODO: {metodo_nome} ===\n\n")
         self.texto_resultado.insert(tk.END, f"STATUS: {status}\n\n")
         if x is not None:
@@ -538,7 +512,6 @@ class App:
 
         self.texto_resultado.insert(tk.END, f"Tempo de execução: {tempo:.6f} s\n\n")
 
-        # tenta calcular resíduo ||Ax - b||_2
         try:
             if x is not None:
                 Ax = np.dot(self.A, np.array(x).reshape(-1))
@@ -547,7 +520,6 @@ class App:
         except Exception:
             pass
 
-        # se houver passos detalhados, mostra na aba de passos
         if steps:
             self.texto_passos.insert(tk.END, f"=== Passos para {metodo_nome} ===\n\n")
             if "actions" in steps and steps["actions"]:
@@ -571,29 +543,42 @@ class App:
                     self.texto_passos.insert(tk.END, f"Iter {k}: {np.array2string(vec, precision=6, floatmode='maxprec')}\n")
                 self.texto_passos.insert(tk.END, "\n")
 
-    # -------------------------
-    # Executa métodos de raízes (usa metodos_raizes)
-    # -------------------------
     def run_roots(self):
-        # limpa saídas
         self.texto_resultado.delete('1.0', tk.END)
         self.texto_passos.delete('1.0', tk.END)
 
         method_name = self.root_method_var.get()
         try:
-            a = float(self.root_a.get()) if self.root_a.get().strip() != "" else 0.0
-            b = float(self.root_b.get()) if self.root_b.get().strip() != "" else 0.0
-            x0 = float(self.root_x0.get()) if self.root_x0.get().strip() != "" else 0.0
-            x1 = float(self.root_x1.get()) if self.root_x1.get().strip() != "" else 0.0
+            a = float(self.root_a.get()) if self.root_a.get().strip() != "" else None
+            b = float(self.root_b.get()) if self.root_b.get().strip() != "" else None
+            x0 = float(self.root_x0.get()) if self.root_x0.get().strip() != "" else None
+            x1 = float(self.root_x1.get()) if self.root_x1.get().strip() != "" else None
             tol = float(self.root_tol.get())
             maxit = int(self.root_maxiter.get())
         except Exception as e:
             messagebox.showerror("Erro de entrada", f"Verifique os campos numéricos: {e}")
             return
 
-        # monta estrutura de entrada compatível com metodos_raizes
-        # método será ajustado abaixo
-        dados = MR.DadosEntrada(1, a, b, x0, x1, tol, maxit)
+        # Valida quais campos são necessários dependendo do método
+        needs = {
+            "Bisseção": ("a", "b"),
+            "Regula Falsi": ("a", "b"),
+            "Secante": ("x0", "x1"),
+            "Newton-Raphson": ("x0",),
+            "Ponto Fixo": ("x0",),
+        }
+        required = needs.get(method_name, ())
+        provided = {"a": a is not None, "b": b is not None, "x0": x0 is not None, "x1": x1 is not None}
+        for r in required:
+            if not provided[r]:
+                messagebox.showerror("Erro de Entrada", f"Método {method_name} requer campo {r} preenchido.")
+                return
+
+        # monta DadosEntrada com defaults (metodos_raizes espera números; usar 0.0 quando None)
+        D = MR.DadosEntrada(1, a if a is not None else 0.0, b if b is not None else 0.0,
+                             x0 if x0 is not None else 0.0, x1 if x1 is not None else 0.0,
+                             tol, maxit)
+
         mapping = {
             "Bisseção": (1, MR.bissecao),
             "Ponto Fixo": (2, MR.ponto_fixo),
@@ -602,31 +587,50 @@ class App:
             "Regula Falsi": (5, MR.regula_falsi)
         }
         metodo_id, func = mapping[method_name]
-        dados.metodo = metodo_id
+        D.metodo = metodo_id
 
-        # captura a saída do método numa string e exibe
+        # Se for ponto fixo, checar convergência local aproximada usando phi' numérico
+        if method_name == "Ponto Fixo":
+            try:
+                # se MR.phi estiver definido, calcula derivada numérica em x0
+                if hasattr(MR, 'phi'):
+                    x_eval = D.x0
+                    h = 1e-6
+                    phi = MR.phi
+                    deriv = (phi(x_eval + h) - phi(x_eval - h)) / (2 * h)
+                    if abs(deriv) >= 1.0:
+                        self.texto_resultado.insert(tk.END, f"⚠️ Aviso: |phi'(x0)| ≈ {deriv:.6f} >= 1 → ponto fixo pode não convergir.\n\n")
+            except Exception:
+                pass
+
         saida_io = io.StringIO()
         try:
-            func(dados, saida_io)
+            func(D, saida_io)
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao executar o método de raízes: {e}")
             return
 
         texto = saida_io.getvalue()
+        # Formatação simples: no final, adiciona resumo se possível
+        # Insere texto bruto nas áreas
         self.texto_resultado.insert(tk.END, texto)
         if self.var_show_roots_steps.get():
             self.texto_passos.insert(tk.END, texto)
 
-        # tenta salvar em resultado.txt (opcional)
+        # tenta salvar log automático
         try:
-            with open("resultado.txt", "w", encoding="utf-8") as f:
+            fn = f"logs/resultado_{timestamp_str()}.txt"
+            with open(fn, 'w', encoding='utf-8') as f:
                 f.write(texto)
+            self.texto_resultado.insert(tk.END, f"\n[Salvo log automático em: {fn}]\n")
         except Exception:
             pass
 
-    # -------------------------
-    # Salvar, limpar
-    # -------------------------
+        # rolagem automática para o fim
+        self.texto_resultado.see(tk.END)
+        self.texto_passos.see(tk.END)
+
+    # ----------------- salvar/limpar -----------------
     def salvar_resultado(self):
         texto = self.texto_resultado.get("1.0", tk.END)
         if texto.strip() == "":
@@ -643,10 +647,7 @@ class App:
             messagebox.showerror("Erro", f"Falha ao salvar: {e}")
 
     def limpar(self):
-        # reseta tudo para o estado inicial
-        self.A = None
-        self.b = None
-        self.lbl_status.config(text="Nenhum arquivo carregado.")
+        # limpa tudo exceto arquivos carregados (A e b)
         self.texto_resultado.delete('1.0', tk.END)
         self.texto_passos.delete('1.0', tk.END)
         self.text_a.delete("1.0", tk.END)
@@ -671,6 +672,10 @@ class App:
             self.var_show_permutation.set(False)
         if hasattr(self, "var_show_roots_steps"):
             self.var_show_roots_steps.set(False)
+
+    def limpar_saida(self):
+        self.texto_resultado.delete('1.0', tk.END)
+        self.texto_passos.delete('1.0', tk.END)
 
 
 # executa a GUI se o arquivo for rodado diretamente
