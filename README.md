@@ -4,29 +4,29 @@ O sistema foi construído com o uso da biblioteca Tkinter para a criação da in
 
 Foram implementados dois grandes grupos de métodos:
 
-Métodos para Sistemas Lineares
+•Métodos para Sistemas Lineares
 
-Eliminação de Gauss (sem pivoteamento)
+-Eliminação de Gauss (sem pivoteamento)
 
-Pivoteamento Parcial e Completo
+-Pivoteamento Parcial e Completo
 
-Fatoração LU
+-Fatoração LU
 
-Fatoração de Cholesky
+-Fatoração de Cholesky
 
-Métodos Iterativos de Gauss–Jacobi e Gauss–Seidel
+-Métodos Iterativos de Gauss–Jacobi e Gauss–Seidel
 
-Métodos para Cálculo de Raízes de Funções
+•Métodos para Cálculo de Raízes de Funções
 
-Método da Bisseção
+-Método da Bisseção
 
-Método do Ponto Fixo
+-Método do Ponto Fixo
 
-Método de Newton–Raphson
+-Método de Newton–Raphson
 
-Método da Secante
+-Método da Secante
 
-Método da Regula Falsi
+-Método da Regula Falsi
 
 A aplicação permite o carregamento de matrizes e vetores via arquivos ou inserção manual, além de exibir o tempo de execução, o resíduo e, no caso dos métodos iterativos, o número de iterações e o processo de convergência.
 
