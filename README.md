@@ -16,8 +16,7 @@ Foram implementados dois grandes grupos de métodos:
 
 -Métodos Iterativos de Gauss–Jacobi e Gauss–Seidel
 
-**•Métodos para Cálculo de Raízes de Funções
-**
+**•Métodos para Cálculo de Raízes de Funções**
 -Método da Bisseção
 
 -Método do Ponto Fixo
