@@ -1,0 +1,5 @@
+
+=== Método da Bisseção ===
+Iter |       xk        |      f(xk)       |     Erro
+-----------------------------------------------------------
+Intervalo inválido: f(a)*f(b) > 0
