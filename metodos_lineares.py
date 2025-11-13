@@ -1,384 +1,351 @@
-# Rotinas para resolver sistemas lineares.
+# ===============================================================
+# Rotinas para resolver sistemas lineares
 # Retornos:
 #   x, tempo, status
 # ou
-#   x, tempo, status, steps  (quando return_steps=True)
+#   x, tempo, status, passos  (quando retornar_passos=True)
+# ===============================================================
 
 import numpy as np
 import time
 
-EPS = 1e-18
+EPS = 1e-18  # tolerância numérica
 
-def is_square(A):
-    # verifica se A é matriz quadrada
-    A = np.array(A)
-    return A.ndim == 2 and A.shape[0] == A.shape[1]
+# ---------------------------------------------------------------
+# Funções auxiliares
+# ---------------------------------------------------------------
 
-def is_positive_definite(A):
-    # tenta fazer Cholesky para checar se é definida positiva
-    A = np.array(A, dtype=float)
-    if not is_square(A):
+def eh_quadrada(matriz):
+    """Verifica se a matriz é quadrada."""
+    matriz = np.array(matriz)
+    return matriz.ndim == 2 and matriz.shape[0] == matriz.shape[1]
+
+
+def eh_definida_positiva(matriz):
+    """Verifica se a matriz é definida positiva via decomposição de Cholesky."""
+    matriz = np.array(matriz, dtype=float)
+    if not eh_quadrada(matriz):
         return False
     try:
-        np.linalg.cholesky(A)
+        np.linalg.cholesky(matriz)
         return True
     except np.linalg.LinAlgError:
         return False
 
-# -------------------------
-# Função auxiliar para retorno consistente
-# -------------------------
-def _wrap_return(x, tempo, status, steps=None, return_steps=False):
-    # se o chamador quis os passos, devolve também o dicionário steps
-    if return_steps:
-        return x, tempo, status, steps
+
+def _empacotar_retorno(x, tempo, status, passos=None, retornar_passos=False):
+    """Padroniza o formato de retorno."""
+    if retornar_passos:
+        return x, tempo, status, passos
     else:
         return x, tempo, status
 
-# -------------------------
+# ---------------------------------------------------------------
 # Eliminação de Gauss (sem pivoteamento)
-# -------------------------
-def eliminacao_gauss(A, b, return_steps=False, show_steps_matrix=False, **kwargs):
+# ---------------------------------------------------------------
+
+def eliminacao_gauss(A, b, retornar_passos=False, mostrar_matrizes=False, **kwargs):
     inicio = time.time()
     A = np.array(A, dtype=float)
     b = np.array(b, dtype=float).reshape(-1)
-    steps = {"matrizes": [], "actions": []}
+    passos = {"matrizes": [], "acoes": []}
 
-    if not is_square(A) or A.shape[0] != b.shape[0]:
-        status = "ERRO: A não é quadrada ou dimensões incompatíveis com b."
-        return _wrap_return(None, 0.0, status, steps, return_steps)
+    if not eh_quadrada(A) or A.shape[0] != b.shape[0]:
+        status = "ERRO: A não é quadrada ou tem dimensões incompatíveis com b."
+        return _empacotar_retorno(None, 0.0, status, passos, retornar_passos)
 
     n = A.shape[0]
-    M = np.hstack([A.copy(), b.reshape(-1,1)])
-    if show_steps_matrix:
-        steps["matrizes"].append(("Inicial (A|b)", M.copy()))
+    M = np.hstack([A.copy(), b.reshape(-1, 1)])
+    if mostrar_matrizes:
+        passos["matrizes"].append(("Inicial (A|b)", M.copy()))
 
-    # fase de eliminação (sem trocar linhas)
     for i in range(n):
         if abs(M[i, i]) < EPS:
             status = f"ERRO: Pivô (linha {i}) muito próximo de zero — pivoteamento necessário."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
-        for j in range(i+1, n):
-            m = M[j, i] / M[i, i]
-            M[j, i:] = M[j, i:] - m * M[i, i:]
-            if show_steps_matrix:
-                steps["actions"].append(f"Eliminou linha {j} usando linha {i} (multiplicador={m:.6g})")
-                steps["matrizes"].append((f"Depois eliminação i={i}, j={j}", M.copy()))
+            return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
+        for j in range(i + 1, n):
+            multiplicador = M[j, i] / M[i, i]
+            M[j, i:] -= multiplicador * M[i, i:]
+            if mostrar_matrizes:
+                passos["acoes"].append(f"Eliminou linha {j} usando linha {i} (m={multiplicador:.6g})")
+                passos["matrizes"].append((f"Após eliminação i={i}, j={j}", M.copy()))
 
-    # retrosubstituição
     x = np.zeros(n)
-    for i in range(n-1, -1, -1):
-        denom = M[i, i]
-        if abs(denom) < EPS:
-            status = f"ERRO: Pivô zero durante retrosubstituição na linha {i}."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
-        x[i] = (M[i, n] - np.dot(M[i, i+1:n], x[i+1:n])) / denom
+    for i in range(n - 1, -1, -1):
+        if abs(M[i, i]) < EPS:
+            status = f"ERRO: Pivô zero durante retrosubstituição (linha {i})."
+            return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
+        x[i] = (M[i, n] - np.dot(M[i, i + 1:], x[i + 1:])) / M[i, i]
 
     tempo = time.time() - inicio
-    status = "Sucesso (Eliminação de Gauss sem pivoteamento)"
-    return _wrap_return(x, tempo, status, steps, return_steps)
+    status = "Sucesso (Eliminação de Gauss sem pivoteamento)."
+    return _empacotar_retorno(x, tempo, status, passos, retornar_passos)
 
-# -------------------------
+# ---------------------------------------------------------------
 # Pivoteamento parcial (troca de linhas)
-# -------------------------
-def pivoteamento_parcial(A, b, return_steps=False, show_steps_matrix=False, **kwargs):
+# ---------------------------------------------------------------
+
+def pivoteamento_parcial(A, b, retornar_passos=False, mostrar_matrizes=False, **kwargs):
     inicio = time.time()
     A = np.array(A, dtype=float)
     b = np.array(b, dtype=float).reshape(-1)
-    steps = {"matrizes": [], "actions": []}
+    passos = {"matrizes": [], "acoes": []}
 
-    if not is_square(A) or A.shape[0] != b.shape[0]:
+    if not eh_quadrada(A) or A.shape[0] != b.shape[0]:
         status = "ERRO: A não é quadrada ou dimensões incompatíveis com b."
-        return _wrap_return(None, 0.0, status, steps, return_steps)
+        return _empacotar_retorno(None, 0.0, status, passos, retornar_passos)
 
     n = len(b)
-    M = np.hstack([A.copy(), b.reshape(-1,1)])
-    if show_steps_matrix:
-        steps["matrizes"].append(("Inicial (A|b)", M.copy()))
+    M = np.hstack([A.copy(), b.reshape(-1, 1)])
+    if mostrar_matrizes:
+        passos["matrizes"].append(("Inicial (A|b)", M.copy()))
 
     for i in range(n):
-        pivot_row = np.argmax(np.abs(M[i:, i])) + i
-        steps["actions"].append(f"Pivô escolhido (linha {pivot_row}) para coluna {i}")
-        if abs(M[pivot_row, i]) < EPS:
+        linha_pivo = np.argmax(np.abs(M[i:, i])) + i
+        passos["acoes"].append(f"Pivô escolhido (linha {linha_pivo}) para coluna {i}")
+        if abs(M[linha_pivo, i]) < EPS:
             status = f"ERRO: Pivô zero (ou quase) na coluna {i}."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
-        if pivot_row != i:
-            M[[i, pivot_row], :] = M[[pivot_row, i], :]
-            steps["actions"].append(f"Trocou linha {i} com {pivot_row}")
-            if show_steps_matrix:
-                steps["matrizes"].append((f"Após troca linhas {i}<->{pivot_row}", M.copy()))
-        for j in range(i+1, n):
-            m = M[j, i] / M[i, i]
-            M[j, i:] = M[j, i:] - m * M[i, i:]
-            steps["actions"].append(f"Eliminou linha {j} usando linha {i} (m={m:.6g})")
-            if show_steps_matrix:
-                steps["matrizes"].append((f"Depois eliminação i={i}, j={j}", M.copy()))
+            return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
+        if linha_pivo != i:
+            M[[i, linha_pivo], :] = M[[linha_pivo, i], :]
+            passos["acoes"].append(f"Trocou linha {i} com {linha_pivo}")
+            if mostrar_matrizes:
+                passos["matrizes"].append((f"Após troca {i}<->{linha_pivo}", M.copy()))
+        for j in range(i + 1, n):
+            multiplicador = M[j, i] / M[i, i]
+            M[j, i:] -= multiplicador * M[i, i:]
+            passos["acoes"].append(f"Eliminou linha {j} usando linha {i} (m={multiplicador:.6g})")
+            if mostrar_matrizes:
+                passos["matrizes"].append((f"Após eliminação i={i}, j={j}", M.copy()))
 
-    # retrosubstituição
+    # Retrosubstituição
     x = np.zeros(n)
-    for i in range(n-1, -1, -1):
-        denom = M[i, i]
-        if abs(denom) < EPS:
-            status = f"ERRO: Pivô zero na retrosubstituição na linha {i}."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
-        x[i] = (M[i, n] - np.dot(M[i, i+1:n], x[i+1:n])) / denom
+    for i in range(n - 1, -1, -1):
+        if abs(M[i, i]) < EPS:
+            status = f"ERRO: Pivô zero na retrosubstituição (linha {i})."
+            return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
+        x[i] = (M[i, n] - np.dot(M[i, i + 1:], x[i + 1:])) / M[i, i]
 
     tempo = time.time() - inicio
-    status = "Sucesso (Gauss com pivoteamento parcial)"
-    return _wrap_return(x, tempo, status, steps, return_steps)
+    status = "Sucesso (Gauss com pivoteamento parcial)."
+    return _empacotar_retorno(x, tempo, status, passos, retornar_passos)
 
-# -------------------------
+# ---------------------------------------------------------------
 # Pivoteamento completo (linhas e colunas)
-# -------------------------
-def pivoteamento_completo(A, b, return_steps=False, show_steps_matrix=False, show_permutation=False, **kwargs):
+# ---------------------------------------------------------------
+
+def pivoteamento_completo(A, b, retornar_passos=False, mostrar_matrizes=False, mostrar_permutacao=False, **kwargs):
     inicio = time.time()
     A = np.array(A, dtype=float)
     b = np.array(b, dtype=float).reshape(-1)
-    steps = {"matrizes": [], "actions": [], "col_perm": None}
+    passos = {"matrizes": [], "acoes": [], "col_permutacao": None}
 
-    if not is_square(A) or A.shape[0] != b.shape[0]:
-        status = "ERRO: Matriz A não é quadrada ou a ordem é inconsistente com b."
-        return _wrap_return(None, 0.0, status, steps, return_steps)
+    if not eh_quadrada(A) or A.shape[0] != b.shape[0]:
+        status = "ERRO: Matriz A não é quadrada ou ordem inconsistente com b."
+        return _empacotar_retorno(None, 0.0, status, passos, retornar_passos)
 
     n = len(b)
-    M = np.hstack([A.copy(), b.reshape(-1,1)])  # matriz aumentada
-    col_perm = list(range(n))  # acompanha permutação de colunas
-    if show_steps_matrix:
-        steps["matrizes"].append(("Inicial (A|b)", M.copy()))
+    M = np.hstack([A.copy(), b.reshape(-1, 1)])
+    col_permutacao = list(range(n))
+    if mostrar_matrizes:
+        passos["matrizes"].append(("Inicial (A|b)", M.copy()))
 
     for i in range(n):
         sub = np.abs(M[i:, i:n])
         if sub.size == 0:
             status = "ERRO: Submatriz vazia durante pivoteamento completo."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
+            return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
 
-        local_max_idx = np.unravel_index(np.argmax(sub, axis=None), sub.shape)
-        pivot_row = i + local_max_idx[0]
-        pivot_col = i + local_max_idx[1]
-        steps["actions"].append(f"Pivô absoluto em posição ({pivot_row},{pivot_col}) para etapa {i}")
+        max_local = np.unravel_index(np.argmax(sub, axis=None), sub.shape)
+        linha_pivo = i + max_local[0]
+        coluna_pivo = i + max_local[1]
+        passos["acoes"].append(f"Pivô absoluto em ({linha_pivo},{coluna_pivo}) na etapa {i}")
 
-        if abs(M[pivot_row, pivot_col]) < EPS:
-            status = f"ERRO: Pivô zero (ou quase) encontrado na etapa {i+1}. Matriz singular."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
+        if abs(M[linha_pivo, coluna_pivo]) < EPS:
+            status = f"ERRO: Pivô zero (ou quase) na etapa {i+1}. Matriz singular."
+            return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
 
-        if pivot_row != i:
-            M[[i, pivot_row], :] = M[[pivot_row, i], :]
-            steps["actions"].append(f"Trocou linhas {i} <-> {pivot_row}")
-            if show_steps_matrix:
-                steps["matrizes"].append((f"Após troca linhas {i}<->{pivot_row}", M.copy()))
+        if linha_pivo != i:
+            M[[i, linha_pivo], :] = M[[linha_pivo, i], :]
+            passos["acoes"].append(f"Trocou linhas {i} <-> {linha_pivo}")
+        if coluna_pivo != i:
+            M[:, [i, coluna_pivo]] = M[:, [coluna_pivo, i]]
+            col_permutacao[i], col_permutacao[coluna_pivo] = col_permutacao[coluna_pivo], col_permutacao[i]
+            passos["acoes"].append(f"Trocou colunas {i} <-> {coluna_pivo}")
 
-        if pivot_col != i:
-            M[:, [i, pivot_col]] = M[:, [pivot_col, i]]
-            col_perm[i], col_perm[pivot_col] = col_perm[pivot_col], col_perm[i]
-            steps["actions"].append(f"Trocou colunas {i} <-> {pivot_col} (permutações atualizadas)")
-            if show_steps_matrix:
-                steps["matrizes"].append((f"Após troca colunas {i}<->{pivot_col}", M.copy()))
-
-        for j in range(i+1, n):
+        for j in range(i + 1, n):
             multiplicador = M[j, i] / M[i, i]
-            M[j, i:] = M[j, i:] - multiplicador * M[i, i:]
-            steps["actions"].append(f"Eliminou linha {j} usando linha {i} (mult={multiplicador:.6g})")
-            if show_steps_matrix:
-                steps["matrizes"].append((f"Depois eliminação i={i}, j={j}", M.copy()))
+            M[j, i:] -= multiplicador * M[i, i:]
+            passos["acoes"].append(f"Eliminou linha {j} usando linha {i} (m={multiplicador:.6g})")
 
-    # retrosubstituição na matriz aumentada (solução permutada)
+    # Retrosubstituição
     x_perm = np.zeros(n)
-    for i in range(n-1, -1, -1):
-        if abs(M[i, i]) < EPS:
-            status = "ERRO: Pivô zero durante retrosubstituição (U com pivô zero)."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
-        x_perm[i] = (M[i, n] - np.dot(M[i, i+1:n], x_perm[i+1:n])) / M[i, i]
+    for i in range(n - 1, -1, -1):
+        x_perm[i] = (M[i, n] - np.dot(M[i, i + 1:], x_perm[i + 1:])) / M[i, i]
 
-    # reordena a solução conforme permutação de colunas
     x = np.zeros(n)
-    for i_col_after in range(n):
-        orig_col_index = col_perm[i_col_after]
-        x[orig_col_index] = x_perm[i_col_after]
+    for i_col in range(n):
+        indice_original = col_permutacao[i_col]
+        x[indice_original] = x_perm[i_col]
 
     tempo = time.time() - inicio
-    status = "Sucesso (Gauss com pivoteamento completo)"
-    if show_permutation:
-        steps["col_perm"] = col_perm.copy()
-    return _wrap_return(x, tempo, status, steps, return_steps)
+    status = "Sucesso (Gauss com pivoteamento completo)."
+    if mostrar_permutacao:
+        passos["col_permutacao"] = col_permutacao.copy()
+    return _empacotar_retorno(x, tempo, status, passos, retornar_passos)
 
-# -------------------------
+# ---------------------------------------------------------------
 # Fatoração LU (sem pivoteamento)
-# -------------------------
-def fatoracao_lu(A, b, return_steps=False, show_steps_matrix=False, show_LU=False, **kwargs):
+# ---------------------------------------------------------------
+
+def fatoracao_lu(A, b, retornar_passos=False, mostrar_matrizes=False, mostrar_LU=False, **kwargs):
     inicio = time.time()
     A = np.array(A, dtype=float)
     b = np.array(b, dtype=float).reshape(-1)
-    steps = {"matrizes": [], "actions": [], "L": None, "U": None}
+    passos = {"matrizes": [], "acoes": [], "L": None, "U": None}
 
-    if not is_square(A) or A.shape[0] != b.shape[0]:
+    if not eh_quadrada(A) or A.shape[0] != b.shape[0]:
         status = "ERRO: A não é quadrada ou dimensões incompatíveis com b."
-        return _wrap_return(None, 0.0, status, steps, return_steps)
+        return _empacotar_retorno(None, 0.0, status, passos, retornar_passos)
 
     n = A.shape[0]
     L = np.eye(n)
     U = A.copy()
-    if show_steps_matrix:
-        steps["matrizes"].append(("Inicial U", U.copy()))
-        steps["matrizes"].append(("Inicial L", L.copy()))
 
     for k in range(n):
         if abs(U[k, k]) < EPS:
-            status = f"ERRO: Pivô zero em U[{k},{k}]. LU sem pivoteamento não aplicável."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
-        for i in range(k+1, n):
+            status = f"ERRO: Pivô zero em U[{k},{k}]."
+            return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
+        for i in range(k + 1, n):
             L[i, k] = U[i, k] / U[k, k]
-            U[i, k:] = U[i, k:] - L[i, k] * U[k, k:]
-            steps["actions"].append(f"Calculou L[{i},{k}] = {L[i,k]:.6g} e atualizou U linha {i}")
-            if show_steps_matrix:
-                steps["matrizes"].append((f"Após k={k}, atualização U", U.copy()))
-                steps["matrizes"].append((f"Após k={k}, L", L.copy()))
+            U[i, k:] -= L[i, k] * U[k, k:]
 
-    # resolve Ly = b
     y = np.zeros(n)
     for i in range(n):
         y[i] = b[i] - np.dot(L[i, :i], y[:i])
 
-    # resolve Ux = y
     x = np.zeros(n)
-    for i in range(n-1, -1, -1):
-        if abs(U[i, i]) < EPS:
-            status = f"ERRO: Pivô zero em U na linha {i}."
-            return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
-        x[i] = (y[i] - np.dot(U[i, i+1:], x[i+1:])) / U[i, i]
+    for i in range(n - 1, -1, -1):
+        x[i] = (y[i] - np.dot(U[i, i + 1:], x[i + 1:])) / U[i, i]
 
     tempo = time.time() - inicio
     status = "Sucesso (Fatoração LU sem pivoteamento)."
-    if show_LU:
-        steps["L"] = L.copy()
-        steps["U"] = U.copy()
-    return _wrap_return(x, tempo, status, steps, return_steps)
+    if mostrar_LU:
+        passos["L"], passos["U"] = L.copy(), U.copy()
+    return _empacotar_retorno(x, tempo, status, passos, retornar_passos)
 
-# -------------------------
-# Cholesky
-# -------------------------
-def cholesky(A, b, return_steps=False, show_steps_matrix=False, show_L=False, **kwargs):
+# ---------------------------------------------------------------
+# Fatoração de Cholesky
+# ---------------------------------------------------------------
+
+def cholesky(A, b, retornar_passos=False, mostrar_matrizes=False, mostrar_L=False, **kwargs):
     inicio = time.time()
     A = np.array(A, dtype=float)
     b = np.array(b, dtype=float).reshape(-1)
-    steps = {"matrizes": [], "actions": [], "L": None}
+    passos = {"matrizes": [], "acoes": [], "L": None}
 
-    if not is_square(A) or A.shape[0] != b.shape[0]:
+    if not eh_quadrada(A) or A.shape[0] != b.shape[0]:
         status = "ERRO: A não é quadrada ou dimensões incompatíveis com b."
-        return _wrap_return(None, 0.0, status, steps, return_steps)
+        return _empacotar_retorno(None, 0.0, status, passos, retornar_passos)
 
     try:
         L = np.linalg.cholesky(A)
     except np.linalg.LinAlgError:
         status = "ERRO: Cholesky não aplicável — matriz não é definida positiva."
-        return _wrap_return(None, time.time()-inicio, status, steps, return_steps)
+        return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
 
-    # resolve Ly = b
-    y = np.zeros_like(b, dtype=float)
-    n = len(b)
-    for i in range(n):
+    y = np.zeros_like(b)
+    for i in range(len(b)):
         y[i] = (b[i] - np.dot(L[i, :i], y[:i])) / L[i, i]
 
-    # resolve L^T x = y
-    x = np.zeros_like(b, dtype=float)
+    x = np.zeros_like(b)
     LT = L.T
-    for i in range(n-1, -1, -1):
-        x[i] = (y[i] - np.dot(LT[i, i+1:], x[i+1:])) / LT[i, i]
+    for i in range(len(b) - 1, -1, -1):
+        x[i] = (y[i] - np.dot(LT[i, i + 1:], x[i + 1:])) / LT[i, i]
 
     tempo = time.time() - inicio
-    status = "Sucesso (Cholesky)."
-    if show_L:
-        steps["L"] = L.copy()
-    return _wrap_return(x, tempo, status, steps, return_steps)
+    status = "Sucesso (Fatoração de Cholesky)."
+    if mostrar_L:
+        passos["L"] = L.copy()
+    return _empacotar_retorno(x, tempo, status, passos, retornar_passos)
 
-# -------------------------
-# Gauss-Jacobi (iterativo)
-# -------------------------
-def gauss_jacobi(A, b, x0=None, tol=1e-8, max_iter=100, return_steps=False, record_iterations=False, **kwargs):
+# ---------------------------------------------------------------
+# Métodos iterativos — Gauss-Jacobi e Gauss-Seidel
+# ---------------------------------------------------------------
+
+def gauss_jacobi(A, b, x0=None, tol=1e-8, max_iter=100, retornar_passos=False, registrar_iteracoes=False, **kwargs):
     inicio = time.time()
     A = np.array(A, dtype=float)
     b = np.array(b, dtype=float).reshape(-1)
-    steps = {"iterations": [], "actions": []}
+    passos = {"iteracoes": [], "acoes": []}
     n = b.shape[0]
-    if x0 is None:
-        x = np.zeros(n)
-    else:
-        x = np.array(x0, dtype=float).reshape(-1)
-        if x.shape[0] != n:
-            x = np.zeros(n)
+    x = np.zeros(n) if x0 is None else np.array(x0, dtype=float)
 
-    if not is_square(A) or A.shape[0] != n:
-        status = "ERRO: A não é quadrada ou dimensões inconsistentes."
-        return _wrap_return(None, 0.0, status, steps, return_steps)
+    if not eh_quadrada(A):
+        status = "ERRO: A não é quadrada."
+        return _empacotar_retorno(None, 0.0, status, passos, retornar_passos)
 
     D = np.diag(A)
     if np.any(np.abs(D) < EPS):
-        status = "ERRO: Zero na diagonal torna Jacobi impraticável (divisão por zero)."
-        return _wrap_return(None, 0.0, status, steps, return_steps)
+        status = "ERRO: Zero na diagonal — método Jacobi inválido."
+        return _empacotar_retorno(None, 0.0, status, passos, retornar_passos)
 
     R = A - np.diagflat(D)
-    x_new = x.copy()
 
-    for k in range(1, max_iter+1):
-        x_new = (b - np.dot(R, x)) / D
-        if record_iterations:
-            steps["iterations"].append(x_new.copy())
-            steps["actions"].append(f"Iteração {k}")
-        if np.linalg.norm(x_new - x, ord=np.inf) < tol:
+    for k in range(1, max_iter + 1):
+        x_novo = (b - np.dot(R, x)) / D
+        if registrar_iteracoes:
+            passos["iteracoes"].append(x_novo.copy())
+            passos["acoes"].append(f"Iteração {k}")
+        if np.linalg.norm(x_novo - x, ord=np.inf) < tol:
             tempo = time.time() - inicio
             status = f"Convergiu em {k} iterações (Gauss-Jacobi)."
-            return _wrap_return(x_new, tempo, status, steps, return_steps)
-        x = x_new.copy()
+            return _empacotar_retorno(x_novo, tempo, status, passos, retornar_passos)
+        x = x_novo.copy()
 
     tempo = time.time() - inicio
-    status = "Atenção: Não convergiu dentro do número máximo de iterações (Jacobi)."
-    return _wrap_return(x_new, tempo, status, steps, return_steps)
+    status = "Atenção: não convergiu dentro do número máximo de iterações (Jacobi)."
+    return _empacotar_retorno(x, tempo, status, passos, retornar_passos)
 
-# -------------------------
-# Gauss-Seidel (iterativo)
-# -------------------------
-def gauss_seidel(A, b, x0=None, tol=1e-8, max_iter=100, return_steps=False, record_iterations=False, **kwargs):
+
+def gauss_seidel(A, b, x0=None, tol=1e-8, max_iter=100, retornar_passos=False, registrar_iteracoes=False, **kwargs):
     inicio = time.time()
     A = np.array(A, dtype=float)
     b = np.array(b, dtype=float).reshape(-1)
-    steps = {"iterations": [], "actions": []}
+    passos = {"iteracoes": [], "acoes": []}
     n = b.shape[0]
-    if x0 is None:
-        x = np.zeros(n)
-    else:
-        x = np.array(x0, dtype=float).reshape(-1)
-        if x.shape[0] != n:
-            x = np.zeros(n)
+    x = np.zeros(n) if x0 is None else np.array(x0, dtype=float)
 
-    if not is_square(A) or A.shape[0] != n:
-        status = "ERRO: A não é quadrada ou dimensões inconsistentes."
-        return _wrap_return(None, 0.0, status, steps, return_steps)
+    if not eh_quadrada(A):
+        status = "ERRO: A não é quadrada."
+        return _empacotar_retorno(None, 0.0, status, passos, retornar_passos)
 
-    for k in range(1, max_iter+1):
-        x_old = x.copy()
+    for k in range(1, max_iter + 1):
+        x_ant = x.copy()
         for i in range(n):
             soma1 = np.dot(A[i, :i], x[:i])
-            soma2 = np.dot(A[i, i+1:], x_old[i+1:])
-            denom = A[i, i]
-            if abs(denom) < EPS:
-                status = f"ERRO: Zero na diagonal em linha {i} (não é possível dividir)."
-                return _wrap_return(None, time.time() - inicio, status, steps, return_steps)
-            x[i] = (b[i] - soma1 - soma2) / denom
+            soma2 = np.dot(A[i, i + 1:], x_ant[i + 1:])
+            if abs(A[i, i]) < EPS:
+                status = f"ERRO: Zero na diagonal (linha {i})."
+                return _empacotar_retorno(None, time.time() - inicio, status, passos, retornar_passos)
+            x[i] = (b[i] - soma1 - soma2) / A[i, i]
 
-        if record_iterations:
-            steps["iterations"].append(x.copy())
-            steps["actions"].append(f"Iteração {k}")
-        if np.linalg.norm(x - x_old, ord=np.inf) < tol:
+        if registrar_iteracoes:
+            passos["iteracoes"].append(x.copy())
+            passos["acoes"].append(f"Iteração {k}")
+        if np.linalg.norm(x - x_ant, ord=np.inf) < tol:
             tempo = time.time() - inicio
             status = f"Convergiu em {k} iterações (Gauss-Seidel)."
-            return _wrap_return(x, tempo, status, steps, return_steps)
+            return _empacotar_retorno(x, tempo, status, passos, retornar_passos)
 
     tempo = time.time() - inicio
-    status = "Atenção: Não convergiu dentro do número máximo de iterações (Gauss-Seidel)."
-    return _wrap_return(x, tempo, status, steps, return_steps)
+    status = "Atenção: não convergiu dentro do número máximo de iterações (Gauss-Seidel)."
+    return _empacotar_retorno(x, tempo, status, passos, retornar_passos)
 
-# -------------------------
-# Mapeamento usado pela GUI
-# -------------------------
+# ---------------------------------------------------------------
+# Mapeamento usado pela interface gráfica (GUI)
+# ---------------------------------------------------------------
+
 METODOS = {
     "Gauss sem pivoteamento": eliminacao_gauss,
     "Gauss com pivoteamento parcial": pivoteamento_parcial,
